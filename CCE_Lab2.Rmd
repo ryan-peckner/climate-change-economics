@@ -1,0 +1,338 @@
+---
+title: "CCE_Lab2"
+author: "Ryan Peckner"
+date: "7/3/2021"
+output: html_document
+---
+
+### Section 1 : Compute Emissions###
+
+Let's first read in the forcings data to a dataframe called 'forcings2', to distinguish it from last week's 'forcings'.
+
+```{r}
+
+library(readxl,quietly = TRUE)
+suppressMessages({forcings2 = read_xlsx("CCE - Assignment 2 - Forcings.xlsx",skip = 2)})
+forcings2 = data.frame(year=as.integer(forcings2[1,][-1]),population.growth.rate=as.numeric(forcings2[3,][-1]),
+                      per.capita.income.growth.rate=as.numeric(forcings2[4,][-1]),energy.intensity.growth.rate=as.numeric(forcings2[5,][-1]),
+                      emission.intensity.growth.rate=as.numeric(forcings2[6,][-1]),land.use.emissions=as.numeric(forcings2[7,][-1]),
+                      abatement.cost.function.coefficient=as.numeric(forcings2[11,][-1]),stringsAsFactors = FALSE)
+head(forcings2)
+
+```
+
+For reference, let's write down the Kaya identity and introduce a function to compute the emissions component.
+$$E_{t}^{\text{Kaya}} = P_{t}\left(\frac{Y_{t}}{P_{t}}\right)\left(\frac{Energy_{t}}{Y_{t}}\right)\left(\frac{E_{t}^{\text{Kaya}}}{Energy_{t}}\right)$$
+```{r}
+
+KayaEmissions = function(t,population,per_capita_output,energy_intensity,emission_intensity) {
+  return(population[t]*per_capita_output[t]*energy_intensity[t]*emission_intensity[t])
+}
+
+BAUEmissions = function(t,kaya_emissions,land_use_emissions) {
+  return(kaya_emissions[t] + land_use_emissions[t])
+}
+
+```
+
+Now, we will compute the Kaya emissions component from the provided data. For this, we need to convert growth rates into actual quantities and keep track of units. We'll add the computed quantited to our dataframe 'forcings2' as we go along.
+
+```{r}
+
+library(memoise,quietly=TRUE)
+
+P_0 = 6.9e9 # People
+per_capita_income_0 = 8500 # Dollars per capita
+energy_intensity_0 = 5.98 # EJ/trillion dollars of output
+carbon_intensity_0 = 18.62 # Mt C/EJ energy
+
+QuantityFromGrowthRate = memoise(function(t,initial_quantity,growth_rate) {
+  if (t==1) return(initial_quantity) 
+  else return(QuantityFromGrowthRate(t-1,initial_quantity,growth_rate) + 
+                growth_rate[t-1]*QuantityFromGrowthRate(t-1,initial_quantity,growth_rate))
+})
+
+forcings2$population = sapply(1:nrow(forcings2),QuantityFromGrowthRate,
+                             initial_quantity = P_0,
+                             growth_rate = forcings2$population.growth.rate)
+
+forcings2$per.capita.income = sapply(1:nrow(forcings2),QuantityFromGrowthRate,
+                             initial_quantity = per_capita_income_0,
+                             growth_rate = forcings2$per.capita.income.growth.rate)
+
+forcings2$energy.intensity = sapply(1:nrow(forcings2),QuantityFromGrowthRate,
+                             initial_quantity = energy_intensity_0,
+                             growth_rate = forcings2$energy.intensity.growth.rate)
+
+forcings2$carbon.intensity = sapply(1:nrow(forcings2),QuantityFromGrowthRate,
+                             initial_quantity = carbon_intensity_0,
+                             growth_rate = forcings2$emission.intensity.growth.rate)
+
+```
+
+Next, we will convert these quantities into a common system of units. In particular, since energy intensity is given in terms of trillion dollars of output while per capita income is given in terms of dollars per person, we'll convert energy intensity into EJ/dollar of output by multiplying the computed energy intensities by the conversion factor $10^{-12}$:
+
+```{r}
+
+forcings2$energy.intensity = forcings2$energy.intensity*10^{-12}
+
+```
+
+Now we can compute the Kaya emissions component for each timepoint, as well as the BAU emissions:
+
+```{r}
+
+forcings2$kaya.emissions = sapply(1:nrow(forcings2),KayaEmissions,
+                                  population= forcings2$population,
+                                  per_capita_output= forcings2$per.capita.income,
+                                  energy_intensity= forcings2$energy.intensity,
+                                  emission_intensity=forcings2$carbon.intensity
+)
+
+forcings2$bau.emissions = forcings2$kaya.emissions + forcings2$land.use.emissions
+  
+```
+
+Now, we will bring back last week's forcings data and the associated functions we implemented to compute atmospheric carbon from emissions. Rather than copying and pasting code here, we will save the necessary data and functions from last week into an R script that we will source into this notebook.
+
+```{r}
+
+source("CCE_Lab1_MainFunctions.R")
+
+```
+
+We're now ready to couple the carbon cycle component with the emissions component, by computing the output of the carbon cycle model when it is supplied with the BAU/Kaya emissions as input.
+
+```{r}
+
+forcings2$carbon.cycle.from.bau.emissions = CarbonCycleModelCO2(forcings2$bau.emissions)
+
+```
+
+**Question 1**: *Decompose the main drivers of climate change in the scenario used in the model and rank their relative contribution to future climate change.*
+
+We will create emissions profiles for each of the cases in which one of the four Kaya identity factors is kept constant at 2010 levels, then calculate the carbon cycle model output for each of these profiles.
+
+```{r, cache=TRUE}
+
+forcings2$kaya.emissions.constant.population = sapply(1:nrow(forcings2),KayaEmissions,
+                                  population= rep(forcings2$population[1],nrow(forcings2)),
+                                  per_capita_output= forcings2$per.capita.income,
+                                  energy_intensity= forcings2$energy.intensity,
+                                  emission_intensity=forcings2$carbon.intensity
+)
+
+forcings2$kaya.emissions.constant.per.capita.output = sapply(1:nrow(forcings2),KayaEmissions,
+                                  population= forcings2$population,
+                                  per_capita_output= rep(forcings2$per.capita.income[1],
+                                                         nrow(forcings2)),
+                                  energy_intensity= forcings2$energy.intensity,
+                                  emission_intensity=forcings2$carbon.intensity
+)
+
+forcings2$kaya.emissions.constant.energy.intensity = sapply(1:nrow(forcings2),KayaEmissions,
+                                  population= forcings2$population,
+                                  per_capita_output= forcings2$per.capita.income,
+                                  energy_intensity= rep(forcings2$energy.intensity[1],
+                                                        nrow(forcings2)),
+                                  emission_intensity=forcings2$carbon.intensity
+)
+
+forcings2$kaya.emissions.constant.emission.intensity = sapply(1:nrow(forcings2),KayaEmissions,
+                                  population= forcings2$population,
+                                  per_capita_output= forcings2$per.capita.income,
+                                  energy_intensity= forcings2$energy.intensity,
+                                  emission_intensity=rep(forcings2$carbon.intensity[1],
+                                                         nrow(forcings2))
+)
+
+forcings2$total.emissions.constant.population = 
+  forcings2$kaya.emissions.constant.population + forcings2$land.use.emissions
+
+forcings2$total.emissions.constant.per.capita.output =  forcings2$kaya.emissions.constant.per.capita.output + forcings2$land.use.emissions
+
+forcings2$total.emissions.constant.energy.intensity  = 
+  forcings2$kaya.emissions.constant.energy.intensity + forcings2$land.use.emissions
+
+forcings2$total.emissions.constant.emission.intensity = forcings2$kaya.emissions.constant.emission.intensity + forcings2$land.use.emissions
+
+
+forcings2$temp.increase.bau = sapply(1:nrow(forcings2),
+                                    GlobalAvgTempIncrease_FromEmissions,
+                                    emissions = forcings2$bau.emissions)
+forcings2$temp.increase.constant.population = sapply(1:nrow(forcings2),
+                                    GlobalAvgTempIncrease_FromEmissions,
+                                    emissions = forcings2$total.emissions.constant.population)
+forcings2$temp.increase.constant.per.capita.output = sapply(1:nrow(forcings2),
+                                    GlobalAvgTempIncrease_FromEmissions,
+                            emissions = forcings2$total.emissions.constant.per.capita.output)
+forcings2$temp.increase.constant.energy.intensity = sapply(1:nrow(forcings2),
+                                    GlobalAvgTempIncrease_FromEmissions,
+                            emissions = forcings2$total.emissions.constant.energy.intensity)
+forcings2$temp.increase.constant.emission.intensity = sapply(1:nrow(forcings2),
+                                    GlobalAvgTempIncrease_FromEmissions,
+                            emissions = forcings2$total.emissions.constant.emission.intensity)
+
+```
+
+We're now ready to plot the effects of each variable from the Kaya identity on world average temperature above pre-industrial levels.
+
+```{r}
+
+library(reshape2,quietly=TRUE)
+library(ggplot2,quietly = T)
+hrbrthemes::import_roboto_condensed()
+
+library(hrbrthemes, quietly = T)
+d <- read.csv(extrafont:::fonttable_file(), stringsAsFactors = FALSE)
+d[grepl("Light", d$FontName),]$FamilyName <- font_rc_light
+write.csv(d,extrafont:::fonttable_file(), row.names = FALSE)
+extrafont::loadfonts()
+
+library(gcookbook,quietly = T)
+
+df_plot = melt(forcings2[c("year","temp.increase.bau","temp.increase.constant.population",
+                           "temp.increase.constant.per.capita.output",
+                           "temp.increase.constant.energy.intensity",
+                           "temp.increase.constant.emission.intensity")],id.vars="year")
+
+ggplot(df_plot,aes(x=year,y=value)) + geom_line(aes(color=variable)) + 
+       scale_color_discrete(labels=c("BAU","Constant population",
+                                     "Constant per capita output",
+                                     "Constant energy intensity",
+                                     "Constant carbon intensity")) + 
+       theme_ipsum_rc() + ylab("Temp Increase over Pre-Industrial Levels (°C)") +
+      theme(legend.title = element_blank())
+
+```
+
+We can now rank each variable in terms of its effect on temperature increase (in decreasing order): energy intensity, carbon intensity, population, and per capita output.
+
+### Section 2: Emissions Reduction Policies### 
+
+Let's introduce new variables to represent emissions and abatement costs in the presence of a control parameter $\mu_{t}$.
+
+```{r}
+
+beta_2 = 2.8
+
+ControlledEmissions = function(t,bau_emissions,control_rate) {
+  return((1-control_rate[t])*bau_emissions[t])
+}
+
+AbatementCost = function(t,abatement_coefficient,control_rate) {
+  return(abatement_coefficient[t]*((control_rate[t])^beta_2))
+}
+
+```
+
+Since the abatement cost is given as a share of GDP, we calculate the actual cost in trillions of dollars by first calculating GDP as $\text{population}\times\text{per capita income}$, then multiply this by the abatement cost and convert to trillions of dollars.
+
+```{r}
+
+ClimatePolicyCost = function(t,population,per.capita.income,abatement_coefficient,control_rate) {
+  GDP = population[t]*per.capita.income[t]
+  cost = GDP*AbatementCost(t,abatement_coefficient,control_rate)
+  return(cost*(10^(-12)))
+}
+
+forcings2$policy.cost.bau = 0
+
+```
+
+**Question 1:** *You will look at two different carbon policy time profiles today and analyze how they affect environmental outcomes and economic cost. The first policy assumes that no climate mitigation is done until the year 2030. Starting in the year 2100 all emissions are mitigated until the end of the model time horizon. The years 2030-2100 see a gradual tightening of climate policy: each year the emission control rate is increased by the same number of percentage points. You should pick the yearly increase such that the emission reduction starts out at 0% in 2030 and ends at 100% in 2100 with equal steps in between. The second policy you analyze starts to tighten in 2010 already, and again reaches a 100% in 2100. Again you should pick the yearly increase in the control rate such that the point increase from year to year of the emission control rate is constant.*
+
+For the first scenario, we are looking for an annual percentage increase in the emission control rate with equal steps, beginning from 0% in 2030 and ending at 100% in 2100. It follow that the value of $\mu_{t}$, beginning from $t=2030$, must be 
+$$\mu_{t} = \frac{t - 2030}{2100 - 2030},$$
+and the annual percentage point increase in the emission control rate is $100\times\frac{1}{2100 - 2030} = 10/7\approx1.4\%$.
+
+For the second policy, we similarly have 
+$$\mu_{t} = \frac{t - 2010}{2100 - 2010},$$
+and the annual percentage point increase in the emission control rate is $100\times\frac{1}{2100 - 2010} = 10/9\approx1.1\%$.
+
+Now, we will add columns to our master dataframe containing these control rates. We'll then add columnes that represent the emission, temperature and cost outcomes of these two carbon mitigation policies.
+
+```{r, cache=TRUE}
+
+#### First mitigation policy
+
+forcings2$emissions.control.rate.2030.mitigation = 0
+
+# Make sure to convert from years to row indices in the dataframe
+for (t in 2030:2100) {
+  forcings2$emissions.control.rate.2030.mitigation[t + 1 - 2010]  =  (t-2030)/(2100-2030)
+} 
+
+for (t in 2101:2300) {
+  forcings2$emissions.control.rate.2030.mitigation[t + 1 - 2010] = 1
+}
+
+forcings2$controlled.emissions.from.2030 = 
+  sapply(1:nrow(forcings2),ControlledEmissions,
+         bau_emissions = forcings2$bau.emissions,
+         control_rate = forcings2$emissions.control.rate.2030.mitigation)
+         
+forcings2$temp.increase.carbon.mitigation.2030 = 
+  sapply(1:nrow(forcings2), GlobalAvgTempIncrease_FromEmissions,
+         emissions = forcings2$controlled.emissions.from.2030)
+
+forcings2$policy.cost.carbon.mitigation.2030 = 
+  sapply(1:nrow(forcings2), ClimatePolicyCost,
+         population = forcings2$population,
+         per.capita.income = forcings2$per.capita.income,
+         abatement_coefficient = forcings2$abatement.cost.function.coefficient,
+         control_rate = forcings2$emissions.control.rate.2030.mitigation)
+
+#### Second mitigation policy
+
+forcings2$emissions.control.rate.2010.mitigation = 0
+
+for (t in 2010:2100) {
+  forcings2$emissions.control.rate.2010.mitigation[t + 1 - 2010] =  (t-2010)/(2100-2010)
+} 
+
+for (t in 2101:2300) {
+  forcings2$emissions.control.rate.2010.mitigation[t + 1 - 2010] = 1
+}
+
+forcings2$controlled.emissions.from.2010 = 
+  sapply(1:nrow(forcings2),ControlledEmissions,
+         bau_emissions = forcings2$bau.emissions,
+         control_rate = forcings2$emissions.control.rate.2010.mitigation)
+         
+forcings2$temp.increase.carbon.mitigation.2010 = 
+  sapply(1:nrow(forcings2), GlobalAvgTempIncrease_FromEmissions,
+         emissions = forcings2$controlled.emissions.from.2010)
+
+forcings2$policy.cost.carbon.mitigation.2010 = 
+  sapply(1:nrow(forcings2), ClimatePolicyCost,
+         population = forcings2$population,
+         per.capita.income = forcings2$per.capita.income,
+         abatement_coefficient = forcings2$abatement.cost.function.coefficient,
+         control_rate = forcings2$emissions.control.rate.2010.mitigation)
+
+```
+
+Finally we plot these temperature and cost outcomes.
+
+```{r}
+
+df_plot = melt(forcings2[c("year","temp.increase.bau",
+                           "temp.increase.carbon.mitigation.2010",
+                           "temp.increase.carbon.mitigation.2030",
+                           "policy.cost.bau",
+                           "policy.cost.carbon.mitigation.2010",
+                           "policy.cost.carbon.mitigation.2030")],
+                   id.vars="year")
+
+df_plot$outcome = ifelse(grepl("temp",df_plot$variable),
+                         "Temperature Increase over Pre-Industrial Levels (°C)",
+                         "Abatment Cost (Trillions of Dollars)")
+df_plot$policy  = "BAU"
+df_plot$policy[grep("2010",df_plot$variable)] = "Carbon mitigation beginning 2010"
+df_plot$policy[grep("2030",df_plot$variable)] = "Carbon mitigation beginning 2030"
+
+ggplot(df_plot, aes(x=year,y=value)) + geom_line(aes(color=policy,group=variable)) + facet_wrap(~outcome,scales = "free_y",ncol = 1) + theme_ipsum_rc() + ylab("")
+
+
+```
