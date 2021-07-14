@@ -1,0 +1,190 @@
+---
+title: "CCE_Lab3"
+author: "Ryan Peckner"
+date: "7/11/2021"
+output: html_document
+---
+
+Let's first read in the forcings data to a dataframe called 'forcings3'.
+
+```{r}
+
+library(readxl,quietly = TRUE)
+suppressMessages({forcings3 = read_xlsx("CCE - Assignment 3 - Forcings-1.xlsx",skip = 2)})
+forcings3 = data.frame(year=as.integer(forcings3[1,][-1]),
+                       total.factor.productivity = as.numeric(forcings3[3,][-1]))
+head(forcings3)
+
+```
+
+Let's write down the Cobb-Douglas production function:
+
+```{r}
+
+alpha = 0.3
+
+GrossOutput = function(t,total_factor_productivity,capital,population) {
+  return(total_factor_productivity[t]*(capital[t]^alpha)*(population[t]^(1-alpha)))
+}
+
+NetOutput = function(t,abatement_cost,gross_output) {
+  return((1-abatement_cost[t])*gross_output[t])
+}
+
+```
+
+Next we have the equation of motion for capital stock. On the face of it, we seem to be in a circular situation, since the net output depends on the capital stock, which depends on the investment rate, which in turn depends again on the net output. So we will untangle this into a slightly different recurrence equation for the capital stock, as follows:
+\begin{align*}
+K_{t} &= (1-\delta)K_{t-1} + I_{t-1} \\ 
+&= (1-\delta)K_{t-1} + sY_{t-1} \\
+&= (1-\delta)K_{t-1} + s(1-\Lambda_{t-1})Y_{t-1}^{G} \\
+&= (1-\delta)K_{t-1} + s(1-\Lambda_{t-1})A_{t-1}K_{t-1}^{\alpha}P_{t-1}^{1-\alpha}.
+\end{align*}
+This allows us to calculate the capital stock without direct reference to the net output:
+```{r}
+library(memoise,quietly=TRUE)
+
+K_0 = 139.65
+delta = 0.1
+s = 0.22
+
+CapitalStock = memoise(function(t,abatement_cost,total_factor_productivity,population) {
+  if (t==1) { 
+    K_0
+  } else {
+  K_t_minus_1 = CapitalStock(t-1,abatement_cost,total_factor_productivity,population)
+  return((1-delta)*K_t_minus_1 + 
+  s*(1-abatement_cost[t-1])*total_factor_productivity[t-1]*(K_t_minus_1^alpha)*(population[t-1]^(1-alpha)))}
+})
+
+```
+
+Now, let's copy and paste some of last week's functions so that we're completely explicit about linking the Kaya identity and abatement costs to GDP.
+
+```{r}
+
+forcings2 = read.csv("CCE_Lab2_Outputs.csv",stringsAsFactors = FALSE)
+
+beta_2 = 2.8
+
+KayaEmissions = function(t,population,per_capita_output,energy_intensity,emission_intensity) {
+  return(population[t]*per_capita_output[t]*energy_intensity[t]*emission_intensity[t])
+}
+
+BAUEmissions = function(t,kaya_emissions,land_use_emissions) {
+  return(kaya_emissions[t] + land_use_emissions[t])
+}
+
+
+ControlledEmissions = function(t,bau_emissions,control_rate) {
+  return((1-control_rate[t])*bau_emissions[t])
+}
+
+AbatementCost = function(t,abatement_coefficient,control_rate) {
+  return(abatement_coefficient[t]*((control_rate[t])^beta_2))
+}
+
+```
+
+
+GDP enters the Kaya identity via per capita output; let's couple this to the calculation above:
+
+```{r}
+
+KayaEmissionsFromGDP = function(t,population,output,energy_intensity,emission_intensity) {
+  per_capita_output = output/population
+  return(KayaEmissions(t,population,per_capita_output,energy_intensity,emission_intensity))
+}
+
+```
+
+**Question 1:** *In your new model, the cost of abatement in a given year also have an effect on output in subsequent years. You will analyze the strength of this effect for this question.*
+
+In what follows, note that we convert last week's population numbers from individuals to millions, since this is required for the Cobb-Douglas production function.
+
+```{r, cache=TRUE}
+
+forcings3$base.case.control.rate = 0
+forcings3$mitigation.policy.control.rate = numeric(nrow(forcings3))
+forcings3$mitigation.policy.control.rate[1] = 0.3
+
+#### BAU calculations
+
+forcings3$abatement.cost.bau = 0
+
+forcings3$capital.stock.bau = sapply(1:nrow(forcings3),CapitalStock,
+                                  abatement_cost= forcings3$abatement.cost.bau,
+                        total_factor_productivity = forcings3$total.factor.productivity,
+                        population = forcings2$population*(1e-6))
+  
+  
+forcings3$gross.output.bau = sapply(1:nrow(forcings3),
+                                    GrossOutput,
+                        total_factor_productivity = forcings3$total.factor.productivity,
+                        capital = forcings3$capital.stock.bau,
+                        population = forcings2$population*(1e-6))
+
+forcings3$net.output.bau = sapply(1:nrow(forcings3),
+                                    NetOutput,
+                            abatement_cost=forcings3$abatement.cost.bau,
+                            gross_output=forcings3$gross.output.bau)
+
+#### Mitigation policy calculations
+
+forcings3$abatement.cost.mitigation.policy =
+                              sapply(1:nrow(forcings3), 
+                            AbatementCost,
+                    abatement_coefficient = forcings2$abatement.cost.function.coefficient,
+                    control_rate = forcings3$mitigation.policy.control.rate)         
+
+forcings3$capital.stock.mitigation.policy = sapply(1:nrow(forcings3),CapitalStock,
+                                  abatement_cost= forcings3$abatement.cost.mitigation.policy,
+                        total_factor_productivity = forcings3$total.factor.productivity,
+                        population = forcings2$population*(1e-6))
+  
+  
+forcings3$gross.output.mitigation.policy = sapply(1:nrow(forcings3),
+                                    GrossOutput,
+                        total_factor_productivity = forcings3$total.factor.productivity,
+                        capital = forcings3$capital.stock.mitigation.policy,
+                        population = forcings2$population*(1e-6))
+
+forcings3$net.output.mitigation.policy = sapply(1:nrow(forcings3),
+                                    NetOutput,
+                            abatement_cost=forcings3$abatement.cost.mitigation.policy,
+                            gross_output=forcings3$gross.output.mitigation.policy)
+
+head(forcings3)
+
+```
+
+We can now find the year when the difference between net output in the two models falls to less than 1 billion dollars per year, using the fact that net output is measured in trillions of dollars:
+
+```{r}
+
+year_index = which(abs(forcings3$net.output.bau - forcings3$net.output.mitigation.policy) < 1e-3)[1]
+print(forcings3$year[year_index])
+
+```
+
+And finally we can plot the differences between net outputs in the base case vs mitigation policy models:
+
+```{r}
+
+library(ggplot2,quietly = T)
+hrbrthemes::import_roboto_condensed()
+
+library(hrbrthemes, quietly = T)
+d <- read.csv(extrafont:::fonttable_file(), stringsAsFactors = FALSE)
+d[grepl("Light", d$FontName),]$FamilyName <- font_rc_light
+write.csv(d,extrafont:::fonttable_file(), row.names = FALSE)
+extrafont::loadfonts()
+
+library(gcookbook,quietly = T)
+
+ggplot(forcings3,aes(x=year,y=net.output.bau - net.output.mitigation.policy)) + geom_line() + 
+  theme_ipsum_rc() + xlim(2011,2300) + ylab("Net output (BAU - mitigiation policy) - trillions of dollars") + ylim(0,0.025)
+
+```
+
+
