@@ -1,0 +1,213 @@
+---
+title: "CCE_Lab4"
+author: "Ryan Peckner"
+date: "7/20/2021"
+output: html_document
+---
+
+We'll first import functions from previous weeks, which we'll need to calculate gross output and temperature changes due to emissions reductions. We'll then introduce a function to calculate harm from rising temperatures as a share of gross output according to the provided formula:
+
+```{r}
+
+source("CCE_Lab1_MainFunctions.R",local = knitr::knit_global())
+source("CCE_Lab3_MainFunctions.R",local = knitr::knit_global())
+forcings3 = read.csv("CCE_Lab3_Outputs.csv")
+Psi = 0.003
+
+Damage = function(temperature) {
+  return(Psi*(temperature^2))
+}
+
+```
+
+In keeping with the formula for net output introduced last week, we will calculate net output as 
+$$Y_{t} = (1 -\Lambda_{t} - D_{t})Y_{t}^{G},$$
+where $D_{t}$ are the damages and $\Lambda_{t}$ is the abatement cost, as before. Now, to consider consumption $C_{t}$ we must also subtract investments in capital stock:
+\begin{align*}
+C_{t} &= Y_{t} - I_{t} \\
+&= Y_{t} - sY_{t} \\
+&= (1-s)Y_{t},
+\end{align*}
+where $s=0.22$ is the savings rate. Finally, consumption per capita is just the consumption divided by the population. Since we want to express consumption per capita in dollars rather than trillions of dollars per person, we must convert by multiplying consumption by $10^{12}$. Let's introduce functions to calculate these quantities.
+
+```{r}
+
+s = 0.22
+
+NetOutput = function(t,abatement_cost,damages,gross_output) {
+  return((1-abatement_cost[t]-damages[t])*gross_output[t])
+}
+
+ConsumptionPerCapita = function(t,net_output,population) {
+  return((10^12)*(1-s)*net_output[t]/population[t])
+}
+
+```
+
+Now, to close the loop, we'll reintroduce the function we used in week 1 to calculate average global temperature increased from a percent reduction in emissions, and use this as the input to the damage calculation.
+
+```{r}
+
+DamagesFromReducedEmissions = function(t,control_rate) {
+  return(Damage(TempIncrease_ReducedEmissions(t,control_rate)))
+}
+
+```
+
+We're ready to add the effects of the four reduction scenarios to our dataframe; for this, let's make a copy of last week's outputs and call it `forcings4'.
+
+```{r, cache=TRUE}
+
+forcings4 = forcings3
+forcings4$damages_bau = sapply(1:nrow(forcings4),
+                               DamagesFromReducedEmissions,
+                               control_rate = 0)
+forcings4$net.output_bau = sapply(1:nrow(forcings4),
+                                NetOutput,
+                                abatement_cost = forcings4$abatement.cost.bau,
+                                damages = forcings4$damages_bau,
+                                gross_output = forcings4$gross.output.bau)
+forcings4$consumption.per.capita_bau = 
+                      sapply(1:nrow(forcings4),
+                             ConsumptionPerCapita,
+                             net_output = forcings4$net.output_bau,
+                             population = forcings2$population)
+
+forcings4$damages_0.1reduction = sapply(1:nrow(forcings4),
+                               DamagesFromReducedEmissions,
+                               control_rate = 0.1)
+forcings4$abatement.cost_0.1reduction = 
+  sapply(1:nrow(forcings4),
+         AbatementCost,
+         abatement_coefficient = forcings2$abatement.cost.function.coefficient,
+         control_rate = rep(0.1,nrow(forcings4)))
+forcings4$net.output_0.1reduction = sapply(1:nrow(forcings4),
+                                NetOutput,
+                                abatement_cost = forcings4$abatement.cost_0.1reduction,
+                                damages = forcings4$damages_0.1reduction,
+                                gross_output = forcings4$gross.output.bau)
+forcings4$consumption.per.capita_0.1reduction = 
+                      sapply(1:nrow(forcings4),
+                             ConsumptionPerCapita,
+                             net_output = forcings4$net.output_0.1reduction,
+                             population = forcings2$population)
+
+forcings4$damages_0.2reduction = sapply(1:nrow(forcings4),
+                               DamagesFromReducedEmissions,
+                               control_rate = 0.2)
+forcings4$abatement.cost_0.2reduction = 
+  sapply(1:nrow(forcings4),AbatementCost,
+         abatement_coefficient = forcings2$abatement.cost.function.coefficient,
+         control_rate = rep(0.2,nrow(forcings4)))
+forcings4$net.output_0.2reduction = sapply(1:nrow(forcings4),
+                                NetOutput,
+                                abatement_cost = forcings4$abatement.cost_0.2reduction,
+                                damages = forcings4$damages_0.2reduction,
+                                gross_output = forcings4$gross.output.bau)
+forcings4$consumption.per.capita_0.2reduction = 
+                      sapply(1:nrow(forcings4),
+                             ConsumptionPerCapita,
+                             net_output = forcings4$net.output_0.2reduction,
+                             population = forcings2$population)
+
+forcings4$damages_0.3reduction = sapply(1:nrow(forcings4),
+                               DamagesFromReducedEmissions,
+                               control_rate = 0.3)
+forcings4$abatement.cost_0.3reduction = 
+  sapply(1:nrow(forcings4),AbatementCost,
+         abatement_coefficient = forcings2$abatement.cost.function.coefficient,
+         control_rate = rep(0.3,nrow(forcings4)))
+forcings4$net.output_0.3reduction = sapply(1:nrow(forcings4),
+                                NetOutput,
+                                abatement_cost = forcings4$abatement.cost_0.3reduction,
+                                damages = forcings4$damages_0.3reduction,
+                                gross_output = forcings4$gross.output.bau)
+forcings4$consumption.per.capita_0.3reduction = 
+                      sapply(1:nrow(forcings4),
+                             ConsumptionPerCapita,
+                             net_output = forcings4$net.output_0.3reduction,
+                             population = forcings2$population)
+
+forcings4$damages_0.4reduction = sapply(1:nrow(forcings4),
+                               DamagesFromReducedEmissions,
+                               control_rate = 0.4)
+forcings4$abatement.cost_0.4reduction = 
+  sapply(1:nrow(forcings4),AbatementCost,
+         abatement_coefficient = forcings2$abatement.cost.function.coefficient,
+         control_rate = rep(0.4,nrow(forcings4)))
+forcings4$net.output_0.4reduction = sapply(1:nrow(forcings4),
+                                NetOutput,
+                                abatement_cost = forcings4$abatement.cost_0.4reduction,
+                                damages = forcings4$damages_0.4reduction,
+                                gross_output = forcings4$gross.output.bau)
+forcings4$consumption.per.capita_0.4reduction = 
+                      sapply(1:nrow(forcings4),
+                             ConsumptionPerCapita,
+                             net_output = forcings4$net.output_0.4reduction,
+                             population = forcings2$population)
+
+```
+
+Now we are able to find the year in which the net change in per capita consumption for each policy turns beneficial.
+
+```{r}
+
+
+df = data.frame(policy=c("10% reduction rate","20% reduction rate",
+                         "30% reduction rate","40% reduction rate"),
+                first.year.beneficial = 
+            c(forcings4$year[which(forcings4$consumption.per.capita_0.1reduction >=
+                                     forcings4$consumption.per.capita_bau)[1]],
+              forcings4$year[which(forcings4$consumption.per.capita_0.2reduction >=
+                                     forcings4$consumption.per.capita_bau)[1]],
+              forcings4$year[which(forcings4$consumption.per.capita_0.3reduction >=
+                                     forcings4$consumption.per.capita_bau)[1]],
+              forcings4$year[which(forcings4$consumption.per.capita_0.4reduction >=
+                                     forcings4$consumption.per.capita_bau)[1]]))
+
+print(df)
+```
+
+Now we will create a plot to show these changes in per capita consumption for each policy, as well as abatement costs and damages.
+
+```{r, fig.width=10,fig.height=8}
+
+library(reshape2)
+
+library(ggplot2,quietly = T)
+hrbrthemes::import_roboto_condensed()
+
+library(hrbrthemes, quietly = T)
+d <- read.csv(extrafont:::fonttable_file(), stringsAsFactors = FALSE)
+d[grepl("Light", d$FontName),]$FamilyName <- font_rc_light
+write.csv(d,extrafont:::fonttable_file(), row.names = FALSE)
+extrafont::loadfonts()
+
+library(gcookbook,quietly = T)
+
+df_plot = melt(forcings4[c("year",
+                    "damages_bau","consumption.per.capita_bau",
+                    "abatement.cost_0.1reduction","damages_0.1reduction","consumption.per.capita_0.1reduction",
+                     "abatement.cost_0.2reduction","damages_0.2reduction","consumption.per.capita_0.2reduction",
+                     "abatement.cost_0.3reduction","damages_0.3reduction","consumption.per.capita_0.3reduction",
+                     "abatement.cost_0.4reduction","damages_0.4reduction","consumption.per.capita_0.4reduction")],
+         id.vars="year")
+
+
+df_plot$abatement.cost_bau = 0
+df_plot$policy = "BAU"
+df_plot$policy[grep("0.1",as.character(df_plot$variable),fixed=TRUE)] = "10% reduction"
+df_plot$policy[grep("0.2",as.character(df_plot$variable),fixed=TRUE)] = "20% reduction"
+df_plot$policy[grep("0.3",as.character(df_plot$variable),fixed=TRUE)] = "30% reduction"
+df_plot$policy[grep("0.4",as.character(df_plot$variable),fixed=TRUE)] = "40% reduction"
+
+df_plot$type = "Per capita consumption (dollars)"
+df_plot$type[grep("abatement",as.character(df_plot$variable),fixed=TRUE)] = "Abatement costs (proportion of output)"
+df_plot$type[grep("damages",as.character(df_plot$variable),fixed=TRUE)] = "Damages (proportion of output)"
+
+ggplot(df_plot,aes(x=year,y=value)) + geom_line(aes(color=policy)) + facet_wrap(~type,ncol=1,scale="free_y") +
+        theme_ipsum_rc()
+```
+
+
+

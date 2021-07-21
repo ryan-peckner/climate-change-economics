@@ -1,4 +1,5 @@
 library(readxl,quietly=TRUE)
+library(memoise)
 
 suppressMessages({forcings_excel = read_xlsx("CCE - Assignment 1 - Forcings.xlsx",skip = 1)})
 forcings = data.frame(year = as.integer(forcings_excel[1,][-1]),co2 = as.numeric(forcings_excel[4,][-1]),
@@ -49,6 +50,20 @@ CarbonCycleModelCO2 = function(emissions) {
   sapply(1:nrow(forcings),AtmosphericCO2,emissions=emissions)
 }
 
-GlobalAvgTempIncrease_FromEmissions = memoise(function(t,emissions) {
+GlobalAvgTempIncrease_FromEmissions = function(t,emissions) {
   GlobalAvgTempIncrease(t,CarbonCycleModelCO2(emissions))
+}
+
+
+ReducedEmissions = memoise(function(t,percent_reduction) {
+  if (t == 1) return(forcings$emissions[1])
+  else return(ReducedEmissions(t-1,percent_reduction)*(1-percent_reduction))
 })
+
+ReducedEmissionsProfile = function(percent_reduction) {
+  sapply(1:nrow(forcings),ReducedEmissions,percent_reduction=percent_reduction)
+}
+
+TempIncrease_ReducedEmissions = function(t,percent_reduction) {
+  return(GlobalAvgTempIncrease_FromEmissions(t,ReducedEmissionsProfile(percent_reduction)))
+}
