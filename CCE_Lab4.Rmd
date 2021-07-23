@@ -91,6 +91,8 @@ forcings4$consumption.per.capita_0.1reduction =
                              ConsumptionPerCapita,
                              net_output = forcings4$net.output_0.1reduction,
                              population = forcings2$population)
+forcings4$percent.change.consumption.per.capita_0.1reduction = 
+              (forcings4$consumption.per.capita_0.1reduction - forcings4$consumption.per.capita_bau)/forcings4$consumption.per.capita_bau
 
 forcings4$damages_0.2reduction = sapply(1:nrow(forcings4),
                                DamagesFromReducedEmissions,
@@ -109,6 +111,8 @@ forcings4$consumption.per.capita_0.2reduction =
                              ConsumptionPerCapita,
                              net_output = forcings4$net.output_0.2reduction,
                              population = forcings2$population)
+forcings4$percent.change.consumption.per.capita_0.2reduction = 
+              (forcings4$consumption.per.capita_0.2reduction - forcings4$consumption.per.capita_bau)/forcings4$consumption.per.capita_bau
 
 forcings4$damages_0.3reduction = sapply(1:nrow(forcings4),
                                DamagesFromReducedEmissions,
@@ -127,6 +131,8 @@ forcings4$consumption.per.capita_0.3reduction =
                              ConsumptionPerCapita,
                              net_output = forcings4$net.output_0.3reduction,
                              population = forcings2$population)
+forcings4$percent.change.consumption.per.capita_0.3reduction = 
+               (forcings4$consumption.per.capita_0.3reduction - forcings4$consumption.per.capita_bau)/forcings4$consumption.per.capita_bau
 
 forcings4$damages_0.4reduction = sapply(1:nrow(forcings4),
                                DamagesFromReducedEmissions,
@@ -145,6 +151,8 @@ forcings4$consumption.per.capita_0.4reduction =
                              ConsumptionPerCapita,
                              net_output = forcings4$net.output_0.4reduction,
                              population = forcings2$population)
+forcings4$percent.change.consumption.per.capita_0.4reduction = 
+              (forcings4$consumption.per.capita_0.4reduction - forcings4$consumption.per.capita_bau)/forcings4$consumption.per.capita_bau
 
 ```
 
@@ -186,11 +194,15 @@ extrafont::loadfonts()
 library(gcookbook,quietly = T)
 
 df_plot = melt(forcings4[c("year",
-                    "damages_bau","consumption.per.capita_bau",
-                    "abatement.cost_0.1reduction","damages_0.1reduction","consumption.per.capita_0.1reduction",
-                     "abatement.cost_0.2reduction","damages_0.2reduction","consumption.per.capita_0.2reduction",
-                     "abatement.cost_0.3reduction","damages_0.3reduction","consumption.per.capita_0.3reduction",
-                     "abatement.cost_0.4reduction","damages_0.4reduction","consumption.per.capita_0.4reduction")],
+                    #"damages_bau",#"consumption.per.capita_bau",
+                    "abatement.cost_0.1reduction","damages_0.1reduction",
+                    "percent.change.consumption.per.capita_0.1reduction",
+                     "abatement.cost_0.2reduction","damages_0.2reduction",
+                    "percent.change.consumption.per.capita_0.2reduction",
+                     "abatement.cost_0.3reduction","damages_0.3reduction",
+                    "percent.change.consumption.per.capita_0.3reduction",
+                     "abatement.cost_0.4reduction","damages_0.4reduction",
+                    "percent.change.consumption.per.capita_0.4reduction")],
          id.vars="year")
 
 
@@ -201,7 +213,7 @@ df_plot$policy[grep("0.2",as.character(df_plot$variable),fixed=TRUE)] = "20% red
 df_plot$policy[grep("0.3",as.character(df_plot$variable),fixed=TRUE)] = "30% reduction"
 df_plot$policy[grep("0.4",as.character(df_plot$variable),fixed=TRUE)] = "40% reduction"
 
-df_plot$type = "Per capita consumption (dollars)"
+df_plot$type = "Percent change in per capita consumption from BAU"
 df_plot$type[grep("abatement",as.character(df_plot$variable),fixed=TRUE)] = "Abatement costs (proportion of output)"
 df_plot$type[grep("damages",as.character(df_plot$variable),fixed=TRUE)] = "Damages (proportion of output)"
 
