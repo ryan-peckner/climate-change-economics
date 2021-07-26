@@ -193,6 +193,15 @@ extrafont::loadfonts()
 
 library(gcookbook,quietly = T)
 
+forcings4$temp.increase_0.1reduction = 
+        sapply(1:nrow(forcings4),TempIncrease_ReducedEmissions,percent_reduction=0.1)
+forcings4$temp.increase_0.2reduction = 
+        sapply(1:nrow(forcings4),TempIncrease_ReducedEmissions,percent_reduction=0.2)
+forcings4$temp.increase_0.3reduction = 
+        sapply(1:nrow(forcings4),TempIncrease_ReducedEmissions,percent_reduction=0.3)
+forcings4$temp.increase_0.4reduction = 
+        sapply(1:nrow(forcings4),TempIncrease_ReducedEmissions,percent_reduction=0.4)
+
 df_plot = melt(forcings4[c("year",
                     #"damages_bau",#"consumption.per.capita_bau",
                     "abatement.cost_0.1reduction","damages_0.1reduction",
@@ -202,7 +211,9 @@ df_plot = melt(forcings4[c("year",
                      "abatement.cost_0.3reduction","damages_0.3reduction",
                     "percent.change.consumption.per.capita_0.3reduction",
                      "abatement.cost_0.4reduction","damages_0.4reduction",
-                    "percent.change.consumption.per.capita_0.4reduction")],
+                    "percent.change.consumption.per.capita_0.4reduction",
+                    "temp.increase_0.1reduction","temp.increase_0.2reduction",
+                    "temp.increase_0.3reduction","temp.increase_0.4reduction")],
          id.vars="year")
 
 
@@ -216,6 +227,8 @@ df_plot$policy[grep("0.4",as.character(df_plot$variable),fixed=TRUE)] = "40% red
 df_plot$type = "Percent change in per capita consumption from BAU"
 df_plot$type[grep("abatement",as.character(df_plot$variable),fixed=TRUE)] = "Abatement costs (proportion of output)"
 df_plot$type[grep("damages",as.character(df_plot$variable),fixed=TRUE)] = "Damages (proportion of output)"
+df_plot$type[grep("temp.increase",as.character(df_plot$variable),fixed=TRUE)] = 
+        "Temperature increase above pre-industrial levels"
 
 ggplot(df_plot,aes(x=year,y=value)) + geom_line(aes(color=policy)) + facet_wrap(~type,ncol=1,scale="free_y") +
         theme_ipsum_rc()
