@@ -154,6 +154,16 @@ forcings4$consumption.per.capita_0.4reduction =
 forcings4$percent.change.consumption.per.capita_0.4reduction = 
               (forcings4$consumption.per.capita_0.4reduction - forcings4$consumption.per.capita_bau)/forcings4$consumption.per.capita_bau
 
+forcings4$temp.increase_0.1reduction = 
+        sapply(1:nrow(forcings4),TempIncrease_ReducedEmissions,percent_reduction=0.1)
+forcings4$temp.increase_0.2reduction = 
+        sapply(1:nrow(forcings4),TempIncrease_ReducedEmissions,percent_reduction=0.2)
+forcings4$temp.increase_0.3reduction = 
+        sapply(1:nrow(forcings4),TempIncrease_ReducedEmissions,percent_reduction=0.3)
+forcings4$temp.increase_0.4reduction = 
+        sapply(1:nrow(forcings4),TempIncrease_ReducedEmissions,percent_reduction=0.4)
+
+
 ```
 
 Now we are able to find the year in which the net change in per capita consumption for each policy turns beneficial.
@@ -192,15 +202,6 @@ write.csv(d,extrafont:::fonttable_file(), row.names = FALSE)
 extrafont::loadfonts()
 
 library(gcookbook,quietly = T)
-
-forcings4$temp.increase_0.1reduction = 
-        sapply(1:nrow(forcings4),TempIncrease_ReducedEmissions,percent_reduction=0.1)
-forcings4$temp.increase_0.2reduction = 
-        sapply(1:nrow(forcings4),TempIncrease_ReducedEmissions,percent_reduction=0.2)
-forcings4$temp.increase_0.3reduction = 
-        sapply(1:nrow(forcings4),TempIncrease_ReducedEmissions,percent_reduction=0.3)
-forcings4$temp.increase_0.4reduction = 
-        sapply(1:nrow(forcings4),TempIncrease_ReducedEmissions,percent_reduction=0.4)
 
 df_plot = melt(forcings4[c("year",
                     #"damages_bau",#"consumption.per.capita_bau",
