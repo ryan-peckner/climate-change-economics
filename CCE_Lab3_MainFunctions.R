@@ -47,10 +47,12 @@ AbatementCost = function(t,abatement_coefficient,control_rate) {
 
 
 KayaEmissionsFromGDP = function(t,population,output,energy_intensity,emission_intensity) {
-  per_capita_output = output/population
+  per_capita_output = (10^12)*(output/population)
   return(KayaEmissions(t,population,per_capita_output,energy_intensity,emission_intensity))
 }
 
-
+TotalEmissions = function(t,kaya_emissions,land_use_emissions) {
+  return(kaya_emissions[t] + land_use_emissions[t])
+}
 
 
