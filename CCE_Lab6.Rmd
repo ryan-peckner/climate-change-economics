@@ -1,0 +1,189 @@
+---
+title: "R Notebook"
+author: "Ryan Peckner"
+date: "08/04/2021"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r, cache=TRUE}
+
+delta = 0.1
+alpha1 = 0.3
+s = 0.22
+
+source("CCE_Lab1_MainFunctions.R")
+source("CCE_Lab3_MainFunctions.R")
+forcings2 = read.csv("CCE_Lab2_Outputs.csv",stringsAsFactors = FALSE)
+forcings3 = read.csv("CCE_Lab3_Outputs.csv",stringsAsFactors = FALSE)
+forcings4 = read.csv("CCE_Lab4_Outputs.csv",stringsAsFactors = FALSE)
+
+Psi = 0.003
+Damage = function(temperature) {
+  return(Psi*(temperature^2))
+}
+
+options(digits=15)
+
+forcings6 = forcings4
+forcings6$temp.increase_bau = numeric(nrow(forcings6))
+forcings6$temp.increase_bau[1] = forcings2$temp.increase.bau[1]
+forcings6$capital.stock_bau = numeric(nrow(forcings6))
+forcings6$capital.stock_bau[1] = 139.65
+forcings6$population = forcings2$population
+forcings6$population.millions = 1e-6*forcings6$population
+forcings6$gross.output_bau = numeric(nrow(forcings6))
+forcings6$kaya.emissions_bau = numeric(nrow(forcings6))
+forcings6$total.emissions_bau = numeric(nrow(forcings6))
+forcings6$damages_bau = numeric(nrow(forcings6))
+
+for (t in 1:nrow(forcings6)) {
+  capital = CapitalStock(t,abatement_cost = rep(0,nrow(forcings6)),
+                         total_factor_productivity = forcings3$total.factor.productivity,
+                         population = forcings6$population.millions)
+  forcings6$capital.stock_bau[t] = capital
+  gross_output = GrossOutput(t,total_factor_productivity = forcings3$total.factor.productivity,
+                       capital = rep(capital,nrow(forcings6)),
+                       population = forcings6$population.millions)
+  forcings6$gross.output_bau[t] = gross_output
+  kaya = KayaEmissionsFromGDP(t,population = forcings6$population,
+                              output = forcings6$gross.output_bau[t],
+                              energy_intensity = forcings2$energy.intensity,
+                              emission_intensity = forcings2$carbon.intensity)
+  forcings6$kaya.emissions_bau[t] = kaya
+  forcings6$total.emissions_bau[t] = TotalEmissions(t,forcings6$kaya.emissions_bau,
+                                                 forcings2$land.use.emissions)
+    net_output = NetOutput(t,abatement_cost = rep(0,nrow(forcings6)),
+                         damages = forcings6$damages_bau,
+                         gross_output = forcings6$gross.output_bau)
+  forcings6$net.output_bau[t] = net_output
+  forcings6$temp.increase_bau[t] = GlobalAvgTempIncrease_FromEmissions(t,forcings6$total.emissions_bau)
+  forcings6$damages_bau[t] = Damage(forcings6$temp.increase_bau[t])
+}
+
+
+
+```
+
+Since Kaya emissions are measured in MtC, we will represent an additional ton of carbon by adding 1e-6 to the total emissions in 2011:
+
+```{r, cache=TRUE}
+
+forcings6$temp.increase_additional.ton.carbon = numeric(nrow(forcings6))
+forcings6$temp.increase_additional.ton.carbon[1] = forcings2$temp.increase.bau[1]
+forcings6$capital.stock_additional.ton.carbon = numeric(nrow(forcings6))
+forcings6$capital.stock_additional.ton.carbon[1] = 139.65
+forcings6$population = forcings2$population
+forcings6$population.millions = 1e-6*forcings6$population
+forcings6$gross.output_additional.ton.carbon = numeric(nrow(forcings6))
+forcings6$kaya.emissions_additional.ton.carbon = numeric(nrow(forcings6))
+forcings6$total.emissions_additional.ton.carbon = numeric(nrow(forcings6))
+forcings6$damages_additional.ton.carbon = numeric(nrow(forcings6))
+forcings6$total.emissions_additional.ton.carbon = numeric(nrow(forcings6))
+forcings6$land.use.emissions_additional.ton.carbon = forcings2$land.use.emissions
+
+for (t in 1:nrow(forcings6)) {
+  capital = CapitalStock(t,abatement_cost = rep(0,nrow(forcings6)),
+                         total_factor_productivity = forcings3$total.factor.productivity,
+                         population = forcings6$population.millions)
+  forcings6$capital.stock_additional.ton.carbon[t] = capital
+  gross_output = GrossOutput(t,total_factor_productivity = forcings3$total.factor.productivity,
+                       capital = rep(capital,nrow(forcings6)),
+                       population = forcings6$population.millions)
+  forcings6$gross.output_additional.ton.carbon[t] = gross_output
+  kaya = KayaEmissionsFromGDP(t,population = forcings6$population,
+                              output = forcings6$gross.output_additional.ton.carbon[t],
+                              energy_intensity = forcings2$energy.intensity,
+                              emission_intensity = forcings2$carbon.intensity)
+  forcings6$kaya.emissions_additional.ton.carbon[t] = kaya
+  forcings6$total.emissions_additional.ton.carbon[t] =  
+                TotalEmissions(t,forcings6$kaya.emissions_additional.ton.carbon,
+                                  forcings6$land.use.emissions_additional.ton.carbon)
+  if (t==2) forcings6$total.emissions_additional.ton.carbon[t] = forcings6$total.emissions_additional.ton.carbon[t] + 1e-6
+  net_output = NetOutput(t,abatement_cost = rep(0,nrow(forcings6)),
+                         damages = forcings6$damages_additional.ton.carbon,
+                         gross_output = forcings6$gross.output_additional.ton.carbon)
+  forcings6$net.output_additional.ton.carbon[t] = net_output
+  forcings6$temp.increase_additional.ton.carbon[t] = GlobalAvgTempIncrease_FromEmissions(t,forcings6$total.emissions_additional.ton.carbon)
+  forcings6$damages_additional.ton.carbon[t] = Damage(forcings6$temp.increase_additional.ton.carbon[t])
+
+}
+
+    
+
+```
+
+Now we will compute the marginal damages. First, we want to convert damages from share of gross output to actual dollar value, which we acheive by multiplying the computed damages with gross output and then converting from trillions of dollars to dollars alone:
+
+```{r}
+
+forcings6$damages_bau_dollars = 
+        1e12*forcings6$damages_bau*forcings6$gross.output_bau
+forcings6$damages_additional.ton.carbon_dollars = 
+        1e12*forcings6$damages_additional.ton.carbon*forcings6$gross.output_additional.ton.carbon
+forcings6$marginal.damages_additional.ton.carbon_dollars = 
+  forcings6$damages_additional.ton.carbon_dollars - forcings6$damages_bau_dollars
+
+```
+
+These marginal damages are computed per ton of carbon, and we will also compute the marginal damages per ton of CO2:
+
+```{r}
+
+forcings6$marginal.damages_additional.ton.CO2_dollars = 
+  (12/44)*forcings6$marginal.damages_additional.ton.carbon_dollars 
+
+```
+
+Now we introduce a function to compute the net present value of the marginal damages with discount rate as a parameter.
+
+```{r}
+
+DiscountFactor = function(t,discount_rate) {
+  return(1/((1+discount_rate)^t))
+}
+
+forcings6$discount.factor_0.03discount.rate = 
+  sapply(seq(0,nrow(forcings6)-1),DiscountFactor,discount_rate = 0.03)
+forcings6$discount.factor_0.025discount.rate = 
+  sapply(seq(0,nrow(forcings6)-1),DiscountFactor,discount_rate = 0.025)
+forcings6$discount.factor_0.05discount.rate = 
+  sapply(seq(0,nrow(forcings6)-1),DiscountFactor,discount_rate = 0.05)
+
+forcings6$net.present.value_marginal.damages_additional.ton.carbon_0.03discount.rate = 
+     forcings6$marginal.damages_additional.ton.carbon_dollars*forcings6$discount.factor_0.03discount.rate
+forcings6$net.present.value_marginal.damages_additional.ton.CO2_0.03discount.rate = 
+     forcings6$marginal.damages_additional.ton.CO2_dollars*forcings6$discount.factor_0.03discount.rate
+
+forcings6$net.present.value_marginal.damages_additional.ton.carbon_0.025discount.rate = 
+     forcings6$marginal.damages_additional.ton.carbon_dollars*forcings6$discount.factor_0.025discount.rate
+forcings6$net.present.value_marginal.damages_additional.ton.CO2_0.025discount.rate = 
+     forcings6$marginal.damages_additional.ton.CO2_dollars*forcings6$discount.factor_0.025discount.rate
+
+forcings6$net.present.value_marginal.damages_additional.ton.carbon_0.05discount.rate = 
+     forcings6$marginal.damages_additional.ton.carbon_dollars*forcings6$discount.factor_0.05discount.rate
+forcings6$net.present.value_marginal.damages_additional.ton.CO2_0.05discount.rate = 
+     forcings6$marginal.damages_additional.ton.CO2_dollars*forcings6$discount.factor_0.05discount.rate
+
+```
+
+Finally, we can compute the social cost of carbon for each of the three discount rates considered, for both carbon and CO2:
+
+```{r}
+
+social.cost.of.carbon = 
+      data.frame(discount.rate = c(0.025,0.03,0.05),
+                 cumulative.marginal.damages_additional.ton.carbon_dollars = 
+                   c(sum(forcings6$net.present.value_marginal.damages_additional.ton.carbon_0.025discount.rate),
+                     sum(forcings6$net.present.value_marginal.damages_additional.ton.carbon_0.03discount.rate),
+                     sum(forcings6$net.present.value_marginal.damages_additional.ton.carbon_0.05discount.rate)),
+                cumulative.marginal.damages_additional.ton.CO2_dollars = 
+                c(sum(forcings6$net.present.value_marginal.damages_additional.ton.CO2_0.025discount.rate),
+                     sum(forcings6$net.present.value_marginal.damages_additional.ton.CO2_0.03discount.rate),
+                     sum(forcings6$net.present.value_marginal.damages_additional.ton.CO2_0.05discount.rate))  )
+
+print(social.cost.of.carbon)
+
+
+```
