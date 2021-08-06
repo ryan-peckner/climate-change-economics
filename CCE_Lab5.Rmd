@@ -48,14 +48,17 @@ delta = 0.1
 alpha1 = 0.3
 s = 0.22
 
+forcings4$population = forcings2$population
+forcings4$population.millions = 1e-6*forcings4$population
+
 GrossOutputWithIncomeElasticity = function(t,temp_increase,abatement_cost,income_elasticity) {
   if (t == 1) {
     return(forcings5$gross.output.bau[1])
   } else {
     Y_t_1 = GrossOutputWithIncomeElasticity(t-1,temp_increase,abatement_cost,income_elasticity)
-    first_term = (1-delta)*(Y_t_1/(forcings4$total.factor.productivity[t-1]*(forcings2$population[t-1]^(1-alpha1))))^(1/alpha1)
+    first_term = (1-delta)*(Y_t_1/(forcings4$total.factor.productivity[t-1]*(forcings4$population.millions[t-1]^(1-alpha1))))^(1/alpha1)
     second_term  = s*(1 - abatement_cost[t-1] - Psi*(temp_increase^2)*((Y_t_1/Y_0)^(income_elasticity)))*Y_t_1
-    return(forcings4$total.factor.productivity[t]*((first_term + second_term)^(alpha1))*(forcings2$population[t]^(1-alpha1)))
+    return(forcings4$total.factor.productivity[t]*((first_term + second_term)^(alpha1))*(forcings4$population.millions[t]^(1-alpha1)))
   }
 }
 
@@ -81,7 +84,7 @@ for (t in 2:nrow(forcings5)) {
   forcings5$temp.increase_0elasticity[t] = 
           GlobalAvgTempIncrease_FromEmissions(t,
                                     emissions = 
-                                     rep(KayaEmissionsFromGDP(t,population = forcings2$population,
+                                     rep(KayaEmissionsFromGDP(t,population = 1e-6*forcings2$population,
                                                           output = forcings5$gross.output_0elasticity,
                                                           energy_intensity = forcings2$energy.intensity,
                                                           emission_intensity = forcings2$carbon.intensity) +

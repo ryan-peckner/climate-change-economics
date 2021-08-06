@@ -9,6 +9,10 @@ GrossOutput = function(t,total_factor_productivity,capital,population) {
 #  return((1-abatement_cost[t])*gross_output[t])
 #}
 
+NetOutput = function(t,abatement_cost,damages,gross_output) {
+  return((1-abatement_cost[t]-damages[t])*gross_output[t])
+}
+
 library(memoise,quietly=TRUE)
 
 K_0 = 139.65
