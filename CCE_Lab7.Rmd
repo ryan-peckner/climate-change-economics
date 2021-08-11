@@ -1,0 +1,192 @@
+---
+title: "CCE_Lab7"
+author: "Ryan Peckner"
+date: "8/10/2021"
+output: html_document
+---
+
+Let's read in this week's forcings.
+
+```{r}
+
+options(digits = 15)
+
+source("CCE_Lab1_MainFunctions.R")
+library(readxl)
+
+lab7_forcings = read_xlsx("CCE - Assignment 7 - Forcings.xlsx")
+lab7_data = type.convert(as.matrix(lab7_forcings[c(3,8:13,17:19),-1]),as.is=FALSE)
+lab7_data = t(lab7_data)
+colnames(lab7_data) = make.names(lab7_forcings$Name[c(3,8:13,17:19)])
+forcings7 = as.data.frame(lab7_data)
+names(forcings7)[1] = "Year"
+head(forcings7)
+
+```
+
+Now let's add consumption as a variable for each region, and use this to compute per capita consumption for each region.
+
+```{r}
+
+forcings7$Rich.consumption.trillions = 
+      0.78*forcings7$Rich...Output...trill.
+forcings7$Middle.consumption.trillions = 
+      0.78*forcings7$Middle...Output...trill.
+forcings7$Poor.consumption.trillions = 
+      0.78*forcings7$Poor...Output...trill.
+
+forcings7$Rich.per.capita.consumption.dollars = 
+      (10^12)*forcings7$Rich.consumption.trillions/((10^6)*forcings7$Rich...Population..million.)
+forcings7$Middle.per.capita.consumption.dollars = 
+      (10^12)*forcings7$Middle.consumption.trillions/((10^6)*forcings7$Middle...Population..million.)
+forcings7$Poor.per.capita.consumption.dollars = 
+      (10^12)*forcings7$Poor.consumption.trillions/((10^6)*forcings7$Poor...Population..million.)
+
+```
+
+Now let's compute region-wise and global emissions.
+
+```{r,cache=TRUE}
+
+forcings7$Rich.emissions.MtC = 
+  forcings7$Rich...emission.intensity.of.GDP..Mt.C..trill.*forcings7$Rich...Output...trill.
+forcings7$Middle.emissions.MtC = 
+  forcings7$Middle...emission.intensity.of.GDP..Mt.C..trill.*forcings7$Middle...Output...trill.
+forcings7$Poor.emissions.MtC = 
+  forcings7$Poor...emission.intensity.of.GDP..Mt.C..trill.*forcings7$Poor...Output...trill.
+
+forcings7$Global.emissions.MtC = 
+  forcings7$Rich.emissions.MtC + forcings7$Middle.emissions.MtC + forcings7$Poor.emissions.MtC
+
+forcings7$atmospheric.carbon = sapply(1:nrow(forcings7),AtmosphericCO2,
+                                      emissions=forcings7$Global.emissions.MtC)
+forcings7$temp.increase = 
+  sapply(1:nrow(forcings7),
+         GlobalAvgTempIncrease_FromEmissions,
+         emissions = forcings7$Global.emissions.MtC)
+
+```
+
+Let's now write down the modified damages function:
+
+```{r}
+
+phi_rich = 0.0546
+phi_middle = 0.0505
+phi_poor = 0.0443
+
+psi_rich = -0.0013
+psi_middle = -0.0017
+psi_poor = -0.0015
+
+Damages_Quadratic = function(temp.increase,phi,psi) {
+  return(phi*temp.increase + psi*(temp.increase^2))
+}
+
+forcings7$Rich.damages = sapply(forcings7$temp.increase,
+                                Damages_Quadratic,
+                                phi=phi_rich,
+                                psi=psi_rich)
+forcings7$Middle.damages = sapply(forcings7$temp.increase,
+                                Damages_Quadratic,
+                                phi=phi_middle,
+                                psi=psi_middle)
+forcings7$Poor.damages = sapply(forcings7$temp.increase,
+                                Damages_Quadratic,
+                                phi=phi_poor,
+                                psi=psi_poor)
+
+forcings7$Rich.damages.trillions = forcings7$Rich.damages*forcings7$Rich...Output...trill.
+forcings7$Middle.damages.trillions = forcings7$Middle.damages*forcings7$Middle...Output...trill.
+forcings7$Poor.damages.trillions = forcings7$Poor.damages*forcings7$Poor...Output...trill.
+
+```
+
+Now we will compute marginal damages for each region.
+
+```{r,cache=TRUE}
+
+forcings7$extra.ton.emissions = forcings7$Global.emissions.MtC 
+forcings7$extra.ton.emissions[2] = forcings7$extra.ton.emissions[2] + 1e-6
+
+forcings7$temp.increase_extra.ton.emissions = 
+  sapply(1:nrow(forcings7),
+         GlobalAvgTempIncrease_FromEmissions,
+         forcings7$extra.ton.emissions)
+
+forcings7$Rich.damages_extra.ton.emissions = sapply(forcings7$temp.increase_extra.ton.emissions,
+                                Damages_Quadratic,
+                                phi=phi_rich,
+                                psi=psi_rich)
+forcings7$Middle.damages_extra.ton.emissions = sapply(forcings7$temp.increase_extra.ton.emissions,
+                                Damages_Quadratic,
+                                phi=phi_middle,
+                                psi=psi_middle)
+forcings7$Poor.damages_extra.ton.emissions = sapply(forcings7$temp.increase_extra.ton.emissions,
+                                Damages_Quadratic,
+                                phi=phi_poor,
+                                psi=psi_poor)
+
+forcings7$Rich.damages_extra.ton.emissions_trillions = forcings7$Rich.damages_extra.ton.emissions*forcings7$Rich...Output...trill.
+forcings7$Middle.damages_extra.ton.emissions_trillions = forcings7$Middle.damages_extra.ton.emissions*forcings7$Middle...Output...trill.
+forcings7$Poor.damages_extra.ton.emissions_trillions = forcings7$Poor.damages_extra.ton.emissions*forcings7$Poor...Output...trill.
+
+forcings7$Rich.marginal.damages = 
+  (10^12)*(forcings7$Rich.damages_extra.ton.emissions_trillions - 
+             forcings7$Rich.damages.trillions)
+forcings7$Middle.marginal.damages = 
+  (10^12)*(forcings7$Middle.damages_extra.ton.emissions_trillions - 
+             forcings7$Middle.damages.trillions)
+forcings7$Poor.marginal.damages = 
+  (10^12)*(forcings7$Poor.damages_extra.ton.emissions_trillions - 
+             forcings7$Poor.damages.trillions)
+
+```
+
+Now we convert marginal damages into utility loss:
+
+```{r}
+
+rho = 0.01
+
+forcings7$Rich_conversion.factor = 
+  (1/forcings7$Rich.per.capita.consumption.dollars)*((1/(1+rho))^seq(1,nrow(forcings7)))
+forcings7$Middle_conversion.factor = 
+  (1/forcings7$Middle.per.capita.consumption.dollars)*((1/(1+rho))^seq(1,nrow(forcings7)))
+forcings7$Poor_conversion.factor = 
+  (1/forcings7$Poor.per.capita.consumption.dollars)*((1/(1+rho))^seq(1,nrow(forcings7)))
+
+
+forcings7$Rich_utility.loss = 
+  forcings7$Rich.marginal.damages*forcings7$Rich_conversion.factor
+forcings7$Middle_utility.loss = 
+  forcings7$Middle.marginal.damages*forcings7$Middle_conversion.factor
+forcings7$Poor_utility.loss = 
+  forcings7$Poor.marginal.damages*forcings7$Poor_conversion.factor
+
+```
+
+Finally, we compute the total damages over all times and all regions:
+
+```{r}
+
+SCC_utils = sum(forcings7$Rich_utility.loss +
+                  forcings7$Middle_utility.loss + 
+                  forcings7$Poor_utility.loss)
+print(SCC_utils)
+
+```
+Finally, we convert this figure in utils back to dollars:
+
+```{r}
+
+scc = data.frame(Region=c("Rich","Middle","Poor"),
+                 scc_dollars.per.tC = 
+                   SCC_utils*c(forcings7$Rich.per.capita.consumption.dollars[1],
+                               forcings7$Middle.per.capita.consumption.dollars[1],
+                               forcings7$Poor.per.capita.consumption.dollars[1]))
+scc$scc_dollars.per.tCO2 = (12/44)*scc$scc_dollars.per.tC
+print(scc)
+
+```
+
