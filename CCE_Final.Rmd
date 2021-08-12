@@ -1,0 +1,98 @@
+---
+title: "CCE_Final"
+author: "Ryan Peckner"
+date: "8/11/2021"
+output: html_document
+---
+
+We will be using the provided base model as our point of departure. Let's load the economy component from the model and calculate per capita consumption growth.
+
+```{r,quietly=TRUE}
+
+library(readxl)
+library(dplyr)
+base_model = read_xlsx("Final Exam Base Model File.xlsx",
+                       skip=87,n_max=8,col_names = FALSE)
+base_model_data = type.convert(as.matrix(base_model[,-1]),as.is = FALSE)
+base_model_data = t(base_model_data)
+colnames(base_model_data) = make.names(base_model$...1)
+base_model = as.data.frame(base_model_data)
+base_model$Year = seq(2010,2300)
+base_model = base_model %>% relocate(Year)
+base_model$per.capita.consumption.growth = numeric(nrow(base_model))
+
+for (i in 2:nrow(base_model)) {
+  base_model$per.capita.consumption.growth[i] = 
+    (base_model$Per.capita.consumption...thousand.[i] - base_model$Per.capita.consumption...thousand.[i-1])/base_model$Per.capita.consumption...thousand.[i-1]
+}
+
+print(head(base_model))
+
+```
+Now let's compute the Ramsey discount factor for each year with the 1% pure rate of time preference.
+```{r}
+
+base_model$ramsey.discount.rate_0.01prtp = 0.01 + base_model$per.capita.consumption.growth
+base_model$ramsey.discount.factor_0.01prtp = numeric(nrow(base_model))
+base_model$ramsey.discount.factor_0.01prtp[1] = 1
+
+for (i in 2:nrow(base_model)) {
+  base_model$ramsey.discount.factor_0.01prtp[i] = 
+    prod(1/(1+base_model$ramsey.discount.rate_0.01prtp[2:i]))
+}
+
+```
+
+**Question 1** *How does the Social Cost of Carbon change for different pure rate of time preference rates?*
+
+We can now use the Ramsey discount factors to compute the SCC given the 1% prtp. First we need to add the marginal damages from an additional ton of carbon dioxide emissions to our model. As the numbers in the given model are calculated for an addition ton of carbon, we need to convert them to marginal damages per addition ton of CO2:
+
+```{r}
+
+marginal_damages = read_xlsx("Final Exam Base Model File.xlsx",
+                             sheet=3,skip=6,n_max=1,col_names = FALSE)
+base_model$marginal_damages = (12/44)*as.numeric(marginal_damages[,-1])
+base_model$net.present.value_marginal.damages_0.01prtp = 
+  base_model$ramsey.discount.factor_0.01prtp*base_model$marginal_damages
+
+scc_0.01prtp = sum(base_model$net.present.value_marginal.damages_0.01prtp)
+print(scc_0.01prtp)
+
+```
+Now we will repeat the above calculations for prtp values of 0% and 3%.
+
+```{r}
+
+base_model$ramsey.discount.rate_0prtp = 0 + base_model$per.capita.consumption.growth
+base_model$ramsey.discount.factor_0prtp = numeric(nrow(base_model))
+base_model$ramsey.discount.factor_0prtp[1] = 1
+
+for (i in 2:nrow(base_model)) {
+  base_model$ramsey.discount.factor_0prtp[i] = 
+    prod(1/(1+base_model$ramsey.discount.rate_0prtp[2:i]))
+}
+base_model$net.present.value_marginal.damages_0prtp = 
+  base_model$ramsey.discount.factor_0prtp*base_model$marginal_damages
+
+scc_0prtp = sum(base_model$net.present.value_marginal.damages_0prtp)
+
+base_model$ramsey.discount.rate_0.03prtp = 0.03 + base_model$per.capita.consumption.growth
+base_model$ramsey.discount.factor_0.03prtp = numeric(nrow(base_model))
+base_model$ramsey.discount.factor_0.03prtp[1] = 1
+
+for (i in 2:nrow(base_model)) {
+  base_model$ramsey.discount.factor_0.03prtp[i] = 
+    prod(1/(1+base_model$ramsey.discount.rate_0.03prtp[2:i]))
+}
+base_model$net.present.value_marginal.damages_0.03prtp = 
+  base_model$ramsey.discount.factor_0.03prtp*base_model$marginal_damages
+
+scc_0.03prtp = sum(base_model$net.present.value_marginal.damages_0.03prtp)
+
+scc = data.frame(prtp=c(0,0.01,0.03),
+                 scc=c(scc_0prtp,scc_0.01prtp,scc_0.03prtp))
+print(scc)
+```
+**Question 2** *How do non-discounted marginal damage estimates over time compare to discounted marginal damage estimates?*
+
+
