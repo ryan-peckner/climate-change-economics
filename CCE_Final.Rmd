@@ -9,6 +9,8 @@ We will be using the provided base model as our point of departure. Let's load t
 
 ```{r,quietly=TRUE}
 
+options(digits=15)
+
 library(readxl)
 library(dplyr)
 base_model = read_xlsx("Final Exam Base Model File.xlsx",
@@ -95,4 +97,299 @@ print(scc)
 ```
 **Question 2** *How do non-discounted marginal damage estimates over time compare to discounted marginal damage estimates?*
 
+Let's add the discounted marginal damages from assignment 6 to our model.
+
+```{r}
+
+npv_marginal.damages_0.03constant.discount.rate = 
+  read_xlsx("Final Exam Base Model File.xlsx",
+                             sheet=3,skip=11,n_max=1,col_names = FALSE)
+base_model$npv_marginal.damages_0.03constant.discount.rate = (12/44)*as.numeric(npv_marginal.damages_0.03constant.discount.rate[,-1])
+
+npv_marginal.damages_0.025constant.discount.rate = 
+  read_xlsx("Final Exam Base Model File.xlsx",
+                             sheet=3,skip=18,n_max=1,col_names = FALSE)
+base_model$npv_marginal.damages_0.025constant.discount.rate = (12/44)*as.numeric(npv_marginal.damages_0.025constant.discount.rate[,-1])
+
+npv_marginal.damages_0.05constant.discount.rate = 
+  read_xlsx("Final Exam Base Model File.xlsx",
+                             sheet=3,skip=25,n_max=1,col_names = FALSE)
+base_model$npv_marginal.damages_0.05constant.discount.rate = (12/44)*as.numeric(npv_marginal.damages_0.05constant.discount.rate[,-1])
+
+```
+
+Now we will plot the various calculated discounted and undiscounted marginal damages for comparison.
+
+```{r}
+
+library(reshape2)
+library(ggplot2,quietly = T)
+hrbrthemes::import_roboto_condensed()
+
+library(hrbrthemes, quietly = T)
+d <- read.csv(extrafont:::fonttable_file(), stringsAsFactors = FALSE)
+d[grepl("Light", d$FontName),]$FamilyName <- font_rc_light
+write.csv(d,extrafont:::fonttable_file(), row.names = FALSE)
+extrafont::loadfonts()
+
+library(gcookbook,quietly = T)
+
+df = melt(base_model[c("Year",
+                       grep("marginal.damages",names(base_model),value=TRUE))],
+          id.vars = "Year")
+
+df$type="Undiscounted"
+df$type[grep("0prtp",df$variable)] = "0% prtp"
+df$type[grep("0.01prtp",df$variable)] = "1% prtp"
+df$type[grep("0.03prtp",df$variable)] = "3% prtp"
+df$type[grep("0.025constant.discount.rate",df$variable)] = "2.5% discount rate"
+df$type[grep("0.03constant.discount.rate",df$variable)] = "3% discount rate"
+df$type[grep("0.05constant.discount.rate",df$variable)] = "5% discount rate"
+
+ggplot(df,aes(x=Year,y=value)) + geom_line(aes(color=type)) + 
+        theme_ipsum_rc() + ylab("Net present value of marginal damages ($)")
+
+```
+Next, we produce the same plot without the undiscounted marginal damages:
+
+```{r}
+
+ggplot(subset(df, type != "Undiscounted"),aes(x=Year,y=value)) + geom_line(aes(color=type)) + 
+        theme_ipsum_rc() + ylab("Net present value of marginal damages ($)")
+
+```
+**Question 3**: *How does the SCC change for different values of the climate sensitivity?*
+
+The two new values of climate sensitive we will consider are 
+$$\lambda_{2} = \frac{2}{5.35 \ln2} \approx 0.5$$
+and 
+$$\lambda_{4.5} = \frac{4.5}{5.35 \ln2} \approx 1.2.$$
+We will create new versions of the model for each of these parameters and run them separately.
+
+```{r,cache=TRUE}
+
+Psi = 0.003
+Damage = function(temperature) {
+  return(Psi*(temperature^2))
+}
+source("CCE_Lab1_MainFunctions_0.5lambda.R")
+
+base_emissions = read_xlsx("Final Exam Base Model File.xlsx",
+                             sheet=1,skip=70,n_max=1,col_names = FALSE)
+base_model$base.emissions = 
+  as.numeric(base_emissions[,-1])
+base_model$emissions_additional.ton.carbon = base_model$base.emissions
+base_model$emissions_additional.ton.carbon[2] = 
+  base_model$emissions_additional.ton.carbon[2] + 1e-6
+base_model$temp.increase_0.5climate.sensitivity= 
+   sapply(1:nrow(base_model),
+          GlobalAvgTempIncrease_FromEmissions,
+          emissions=base_model$base.emissions)
+base_model$damages_0.5climate.sensitivity=
+  sapply(base_model$temp.increase_0.5climate.sensitivity,Damage)
+base_model$damages_0.5climate.sensitivity_dollars=
+  1e12*base_model$damages_0.5climate.sensitivity*base_model$Gross.Output...trill.
+
+base_model$temp.increase_additional.ton.carbon_0.5climate.sensitivity =
+  sapply(1:nrow(base_model),
+          GlobalAvgTempIncrease_FromEmissions,
+          emissions=base_model$emissions_additional.ton.carbon)
+base_model$damages_additional.ton.carbon_0.5climate.sensitivity=
+  sapply(base_model$temp.increase_additional.ton.carbon_0.5climate.sensitivity,Damage)
+base_model$damages_additional.ton.carbon_0.5climate.sensitivity_dollars=
+  1e12*base_model$damages_additional.ton.carbon_0.5climate.sensitivity*base_model$Gross.Output...trill.
+
+base_model$marginal.damages_additional.ton.carbon_0.5climate.sensitivity_dollars=
+  base_model$damages_additional.ton.carbon_0.5climate.sensitivity_dollars - 
+  base_model$damages_0.5climate.sensitivity_dollars
+  
+```
+Now let's compute the net present value of marginal damages and social cost of carbon for the 0.5 sensitivity parameter under constant discount schemes. 
+
+```{r}
+
+ConstantDiscountFactor = function(t,discount_rate) {
+  return(1/((1+discount_rate)^t))
+}
+
+base_model$discount.factor_0.03discount.rate = 
+  sapply(seq(0,nrow(base_model)-1),ConstantDiscountFactor,discount_rate = 0.03)
+base_model$discount.factor_0.025discount.rate = 
+  sapply(seq(0,nrow(base_model)-1),ConstantDiscountFactor,discount_rate = 0.025)
+base_model$discount.factor_0.05discount.rate = 
+  sapply(seq(0,nrow(base_model)-1),ConstantDiscountFactor,discount_rate = 0.05)
+
+
+base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.03discount.rate_dollars = 
+     base_model$marginal.damages_additional.ton.carbon_0.5climate.sensitivity_dollars*base_model$discount.factor_0.03discount.rate
+base_model$net.present.value_marginal.damages_additional.ton.CO2_0.5climate.sensitivity_0.03discount.rate_dollars = (12/44)*base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.03discount.rate
+
+base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.025discount.rate_dollars = 
+     base_model$marginal.damages_additional.ton.carbon_0.5climate.sensitivity_dollars*base_model$discount.factor_0.025discount.rate
+base_model$net.present.value_marginal.damages_additional.ton.CO2_0.5climate.sensitivity_0.025discount.rate_dollars = (12/44)*base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.025discount.rate
+
+base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.05discount.rate_dollars = 
+     base_model$marginal.damages_additional.ton.carbon_0.5climate.sensitivity_dollars*base_model$discount.factor_0.05discount.rate
+base_model$net.present.value_marginal.damages_additional.ton.CO2_0.5climate.sensitivity_0.05discount.rate_dollars = (12/44)*base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.05discount.rate
+
+
+scc_0.5climate.sensitivity_0.03discount.rate = 
+  sum(base_model$net.present.value_marginal.damages_additional.ton.CO2_0.5climate.sensitivity_0.03discount.rate_dollars)
+scc_0.5climate.sensitivity_0.025discount.rate = 
+  sum(base_model$net.present.value_marginal.damages_additional.ton.CO2_0.5climate.sensitivity_0.025discount.rate_dollars)
+scc_0.5climate.sensitivity_0.05discount.rate = 
+  sum(base_model$net.present.value_marginal.damages_additional.ton.CO2_0.5climate.sensitivity_0.05discount.rate_dollars)
+
+```
+
+Finally, we compute the net present value of marginal damages and social cost of carbon for the 0.5 sensitivity parameter under the Ramsey discount schemes. 
+
+```{r}
+
+base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.01prtp_dollars = 
+  base_model$ramsey.discount.factor_0.01prtp*base_model$marginal.damages_additional.ton.carbon_0.5climate.sensitivity_dollars
+base_model$net.present.value_marginal.damages_additional.ton.CO2_0.5climate.sensitivity_0.01prtp_dollars = 
+  (12/44)*base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.01prtp_dollars
+
+base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0prtp_dollars = 
+  base_model$ramsey.discount.factor_0prtp*base_model$marginal.damages_additional.ton.carbon_0.5climate.sensitivity_dollars
+base_model$net.present.value_marginal.damages_additional.ton.CO2_0.5climate.sensitivity_0prtp_dollars = 
+  (12/44)*base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0prtp_dollars
+
+base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.03prtp_dollars = 
+  base_model$ramsey.discount.factor_0.03prtp*base_model$marginal.damages_additional.ton.carbon_0.5climate.sensitivity_dollars
+base_model$net.present.value_marginal.damages_additional.ton.CO2_0.5climate.sensitivity_0.03prtp_dollars = 
+  (12/44)*base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.03prtp_dollars
+
+scc_0.5climate.sensitivity_0.01prtp = 
+  sum(base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.01prtp_dollars)
+scc_0.5climate.sensitivity_0prtp = 
+  sum(base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0prtp_dollars)
+scc_0.5climate.sensitivity_0.03prtp = 
+  sum(base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.03prtp_dollars)
+
+```
+
+Now we will repeat all of the above calculations for a climate sensitivity of 1.2, which corresponds to 4.5 degrees of warming.
+
+```{r,cache=TRUE}
+
+
+Psi = 0.003
+Damage = function(temperature) {
+  return(Psi*(temperature^2))
+}
+source("CCE_Lab1_MainFunctions_1.2lambda.R")
+
+base_emissions = read_xlsx("Final Exam Base Model File.xlsx",
+                             sheet=1,skip=70,n_max=1,col_names = FALSE)
+base_model$base.emissions = 
+  as.numeric(base_emissions[,-1])
+base_model$emissions_additional.ton.carbon = base_model$base.emissions
+base_model$emissions_additional.ton.carbon[2] = 
+  base_model$emissions_additional.ton.carbon[2] + 1e-6
+base_model$temp.increase_1.2climate.sensitivity= 
+   sapply(1:nrow(base_model),
+          GlobalAvgTempIncrease_FromEmissions,
+          emissions=base_model$base.emissions)
+base_model$damages_1.2climate.sensitivity=
+  sapply(base_model$temp.increase_1.2climate.sensitivity,Damage)
+base_model$damages_1.2climate.sensitivity_dollars=
+  1e12*base_model$damages_1.2climate.sensitivity*base_model$Gross.Output...trill.
+
+base_model$temp.increase_additional.ton.carbon_1.2climate.sensitivity =
+  sapply(1:nrow(base_model),
+          GlobalAvgTempIncrease_FromEmissions,
+          emissions=base_model$emissions_additional.ton.carbon)
+base_model$damages_additional.ton.carbon_1.2climate.sensitivity=
+  sapply(base_model$temp.increase_additional.ton.carbon_1.2climate.sensitivity,Damage)
+base_model$damages_additional.ton.carbon_1.2climate.sensitivity_dollars=
+  1e12*base_model$damages_additional.ton.carbon_1.2climate.sensitivity*base_model$Gross.Output...trill.
+
+base_model$marginal.damages_additional.ton.carbon_1.2climate.sensitivity_dollars=
+  base_model$damages_additional.ton.carbon_1.2climate.sensitivity_dollars - 
+  base_model$damages_1.2climate.sensitivity_dollars
+
+
+ConstantDiscountFactor = function(t,discount_rate) {
+  return(1/((1+discount_rate)^t))
+}
+
+base_model$discount.factor_0.03discount.rate = 
+  sapply(seq(0,nrow(base_model)-1),ConstantDiscountFactor,discount_rate = 0.03)
+base_model$discount.factor_0.025discount.rate = 
+  sapply(seq(0,nrow(base_model)-1),ConstantDiscountFactor,discount_rate = 0.025)
+base_model$discount.factor_0.05discount.rate = 
+  sapply(seq(0,nrow(base_model)-1),ConstantDiscountFactor,discount_rate = 0.05)
+
+
+base_model$net.present.value_marginal.damages_additional.ton.carbon_1.2climate.sensitivity_0.03discount.rate_dollars = 
+     base_model$marginal.damages_additional.ton.carbon_1.2climate.sensitivity_dollars*base_model$discount.factor_0.03discount.rate
+base_model$net.present.value_marginal.damages_additional.ton.CO2_1.2climate.sensitivity_0.03discount.rate_dollars = (12/44)*base_model$net.present.value_marginal.damages_additional.ton.carbon_1.2climate.sensitivity_0.03discount.rate
+
+base_model$net.present.value_marginal.damages_additional.ton.carbon_1.2climate.sensitivity_0.025discount.rate_dollars = 
+     base_model$marginal.damages_additional.ton.carbon_1.2climate.sensitivity_dollars*base_model$discount.factor_0.025discount.rate
+base_model$net.present.value_marginal.damages_additional.ton.CO2_1.2climate.sensitivity_0.025discount.rate_dollars = (12/44)*base_model$net.present.value_marginal.damages_additional.ton.carbon_1.2climate.sensitivity_0.025discount.rate
+
+base_model$net.present.value_marginal.damages_additional.ton.carbon_1.2climate.sensitivity_0.05discount.rate_dollars = 
+     base_model$marginal.damages_additional.ton.carbon_1.2climate.sensitivity_dollars*base_model$discount.factor_0.05discount.rate
+base_model$net.present.value_marginal.damages_additional.ton.CO2_1.2climate.sensitivity_0.05discount.rate_dollars = (12/44)*base_model$net.present.value_marginal.damages_additional.ton.carbon_1.2climate.sensitivity_0.05discount.rate
+
+
+scc_1.2climate.sensitivity_0.03discount.rate = 
+  sum(base_model$net.present.value_marginal.damages_additional.ton.CO2_1.2climate.sensitivity_0.03discount.rate_dollars)
+scc_1.2climate.sensitivity_0.025discount.rate = 
+  sum(base_model$net.present.value_marginal.damages_additional.ton.CO2_1.2climate.sensitivity_0.025discount.rate_dollars)
+scc_1.2climate.sensitivity_0.05discount.rate = 
+  sum(base_model$net.present.value_marginal.damages_additional.ton.CO2_1.2climate.sensitivity_0.05discount.rate_dollars)
+
+
+base_model$net.present.value_marginal.damages_additional.ton.carbon_1.2climate.sensitivity_0.01prtp_dollars = 
+  base_model$ramsey.discount.factor_0.01prtp*base_model$marginal.damages_additional.ton.carbon_1.2climate.sensitivity_dollars
+base_model$net.present.value_marginal.damages_additional.ton.CO2_1.2climate.sensitivity_0.01prtp_dollars = 
+  (12/44)*base_model$net.present.value_marginal.damages_additional.ton.carbon_1.2climate.sensitivity_0.01prtp_dollars
+
+base_model$net.present.value_marginal.damages_additional.ton.carbon_1.2climate.sensitivity_0prtp_dollars = 
+  base_model$ramsey.discount.factor_0prtp*base_model$marginal.damages_additional.ton.carbon_1.2climate.sensitivity_dollars
+base_model$net.present.value_marginal.damages_additional.ton.CO2_1.2climate.sensitivity_0prtp_dollars = 
+  (12/44)*base_model$net.present.value_marginal.damages_additional.ton.carbon_1.2climate.sensitivity_0prtp_dollars
+
+base_model$net.present.value_marginal.damages_additional.ton.carbon_1.2climate.sensitivity_0.03prtp_dollars = 
+  base_model$ramsey.discount.factor_0.03prtp*base_model$marginal.damages_additional.ton.carbon_1.2climate.sensitivity_dollars
+base_model$net.present.value_marginal.damages_additional.ton.CO2_1.2climate.sensitivity_0.03prtp_dollars = 
+  (12/44)*base_model$net.present.value_marginal.damages_additional.ton.carbon_1.2climate.sensitivity_0.03prtp_dollars
+
+scc_1.2climate.sensitivity_0.01prtp = 
+  sum(base_model$net.present.value_marginal.damages_additional.ton.CO2_1.2climate.sensitivity_0.01prtp_dollars)
+scc_1.2climate.sensitivity_0prtp = 
+  sum(base_model$net.present.value_marginal.damages_additional.ton.CO2_1.2climate.sensitivity_0prtp_dollars)
+scc_1.2climate.sensitivity_0.03prtp = 
+  sum(base_model$net.present.value_marginal.damages_additional.ton.CO2_1.2climate.sensitivity_0.03prtp_dollars)
+
+```
+
+We're finally ready to show how the climate sensitivity parameters control the SCC for the six discounting schemes considered.
+
+```{r}
+
+scc_final = expand.grid(climate.sensitivity=c(0.5,1.2),
+                       discounting.scheme=c("2.5% constant","3% constant","5% constant",
+                                            "0% prtp","1% prtp","3% prtp"))
+scc_final$scc_additional.ton.CO2 = numeric(nrow(scc_final))
+scc_final$scc_additional.ton.CO2[1] = scc_0.5climate.sensitivity_0.025discount.rate
+scc_final$scc_additional.ton.CO2[2] = scc_1.2climate.sensitivity_0.025discount.rate
+scc_final$scc_additional.ton.CO2[3] = scc_0.5climate.sensitivity_0.03discount.rate
+scc_final$scc_additional.ton.CO2[4] = scc_1.2climate.sensitivity_0.03discount.rate
+scc_final$scc_additional.ton.CO2[5] = scc_0.5climate.sensitivity_0.05discount.rate
+scc_final$scc_additional.ton.CO2[6] = scc_1.2climate.sensitivity_0.05discount.rate
+scc_final$scc_additional.ton.CO2[7] = scc_0.5climate.sensitivity_0prtp
+scc_final$scc_additional.ton.CO2[8] = scc_1.2climate.sensitivity_0prtp
+scc_final$scc_additional.ton.CO2[9] = scc_0.5climate.sensitivity_0.01prtp
+scc_final$scc_additional.ton.CO2[10] = scc_1.2climate.sensitivity_0.01prtp
+scc_final$scc_additional.ton.CO2[11] = scc_0.5climate.sensitivity_0.03prtp
+scc_final$scc_additional.ton.CO2[12] = scc_1.2climate.sensitivity_0.03prtp
+
+print(scc_final)
+
+```
 
