@@ -150,6 +150,7 @@ ggplot(df,aes(x=Year,y=value)) + geom_line(aes(color=type)) +
         theme_ipsum_rc() + ylab("Net present value of marginal damages ($)")
 
 ```
+
 Next, we produce the same plot without the undiscounted marginal damages:
 
 ```{r}
@@ -158,6 +159,7 @@ ggplot(subset(df, type != "Undiscounted"),aes(x=Year,y=value)) + geom_line(aes(c
         theme_ipsum_rc() + ylab("Net present value of marginal damages ($)")
 
 ```
+
 **Question 3**: *How does the SCC change for different values of the climate sensitivity?*
 
 The two new values of climate sensitive we will consider are 
@@ -262,11 +264,11 @@ base_model$net.present.value_marginal.damages_additional.ton.CO2_0.5climate.sens
   (12/44)*base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.03prtp_dollars
 
 scc_0.5climate.sensitivity_0.01prtp = 
-  sum(base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.01prtp_dollars)
+  sum(base_model$net.present.value_marginal.damages_additional.ton.CO2_0.5climate.sensitivity_0.01prtp_dollars)
 scc_0.5climate.sensitivity_0prtp = 
-  sum(base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0prtp_dollars)
+  sum(base_model$net.present.value_marginal.damages_additional.ton.CO2_0.5climate.sensitivity_0prtp_dollars)
 scc_0.5climate.sensitivity_0.03prtp = 
-  sum(base_model$net.present.value_marginal.damages_additional.ton.carbon_0.5climate.sensitivity_0.03prtp_dollars)
+  sum(base_model$net.present.value_marginal.damages_additional.ton.CO2_0.5climate.sensitivity_0.03prtp_dollars)
 
 ```
 
